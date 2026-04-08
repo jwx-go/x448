@@ -1,4 +1,5 @@
-// Package x448 provides X448 ECDH-ES key agreement and JWK support for the jwx library.
+// Package x448 provides X448 ECDH-ES key agreement, HPKE, and JWK support
+// for the jwx library.
 //
 // X448 is not included in the main jwx module because Go's standard library
 // does not support X448, requiring the external github.com/cloudflare/circl
@@ -9,9 +10,10 @@
 //
 //	import _ "github.com/jwx-go/x448/v4"
 //
-// This registers X448 JWK key import/export and ECDH-ES key agreement
-// with the jwx library. After importing, OKP keys with curve "X448" can
-// be used with jwe.Encrypt and jwe.Decrypt using ECDH-ES algorithms.
+// This registers X448 JWK key import/export, ECDH-ES key agreement, and
+// HPKE algorithms (HPKE-5-KE, HPKE-6-KE) with the jwx library. After
+// importing, OKP keys with curve "X448" can be used with jwe.Encrypt and
+// jwe.Decrypt using ECDH-ES and HPKE algorithms.
 package x448
 
 import (
@@ -23,9 +25,30 @@ import (
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jwk/jwkunsafe"
 	"github.com/lestrrat-go/jwx/v4/jwe/jwebb"
+
+	x448hpke "github.com/jwx-go/x448/v4/hpke"
+	"github.com/jwx-go/x448/v4/dhkem"
+)
+
+// HPKE algorithm identifiers per draft-ietf-jose-hpke-encrypt.
+const (
+	// HPKE5KE is DHKEM(X448, HKDF-SHA512) + HKDF-SHA512 + AES-256-GCM.
+	HPKE5KE = "HPKE-5-KE"
+
+	// HPKE6KE is DHKEM(X448, HKDF-SHA512) + HKDF-SHA512 + ChaCha20Poly1305.
+	HPKE6KE = "HPKE-6-KE"
 )
 
 var x448Curve = jwa.X448()
+
+var hpke5ke = jwa.NewKeyEncryptionAlgorithm(HPKE5KE)
+var hpke6ke = jwa.NewKeyEncryptionAlgorithm(HPKE6KE)
+
+// HPKE5() returns the HPKE-5-KE key encryption algorithm.
+func HPKE5() jwa.KeyEncryptionAlgorithm { return hpke5ke }
+
+// HPKE6() returns the HPKE-6-KE key encryption algorithm.
+func HPKE6() jwa.KeyEncryptionAlgorithm { return hpke6ke }
 
 func init() {
 	// Register JWK exporter for OKP:X448 keys (JWK → raw x448 key)
@@ -37,6 +60,41 @@ func init() {
 	// Register jwk.Import handlers for X448 key types (raw x448 key → JWK)
 	jwk.RegisterKeyImporter(importX448PublicKey)
 	jwk.RegisterKeyImporter(importX448PrivateKey)
+
+	// Register HPKE key encryption algorithms
+	jwa.RegisterKeyEncryptionAlgorithm(hpke5ke)
+	jwa.RegisterKeyEncryptionAlgorithm(hpke6ke)
+
+	// Register as HPKE algorithms so IsHPKE() returns true
+	jwebb.RegisterHPKEAlgorithm(HPKE5KE)
+	jwebb.RegisterHPKEAlgorithm(HPKE6KE)
+}
+
+// hpkeAEAD maps an HPKE algorithm identifier to the corresponding AEAD.
+func hpkeAEAD(alg string) (x448hpke.AEAD, error) {
+	switch alg {
+	case HPKE5KE:
+		return x448hpke.AES256GCM, nil
+	case HPKE6KE:
+		return x448hpke.ChaCha20Poly1305, nil
+	default:
+		return 0, fmt.Errorf("x448: unsupported HPKE algorithm %s", alg)
+	}
+}
+
+// hpkeKEInfo builds the HPKE info parameter for Key Encryption mode
+// per draft-ietf-jose-hpke-encrypt:
+//
+//	"JOSE-HPKE rcpt" || 0xFF || enc_value || 0xFF
+func hpkeKEInfo(calg string) []byte {
+	prefix := []byte("JOSE-HPKE rcpt")
+	calgBytes := []byte(calg)
+	info := make([]byte, 0, len(prefix)+1+len(calgBytes)+1)
+	info = append(info, prefix...)
+	info = append(info, 0xFF)
+	info = append(info, calgBytes...)
+	info = append(info, 0xFF)
+	return info
 }
 
 // --- Key wrapper types (implement ECDHESKeyGenerator/ECDHESKeyDeriver) ---
@@ -140,6 +198,52 @@ func (pk *PrivateKey) DeriveECDHES(alg string, keysize int, ephemeralPubKey any,
 	}
 
 	return derivedKey, nil
+}
+
+// --- HPKE (HPKEKeyEncrypter / HPKEKeyDecrypter) ---
+
+// EncryptHPKE implements jwebb.HPKEKeyEncrypter. It encrypts the CEK using
+// HPKE Base mode with DHKEM(X448, HKDF-SHA512).
+func (pk *PublicKey) EncryptHPKE(cek []byte, alg, calg string) ([]byte, []byte, error) {
+	aead, err := hpkeAEAD(alg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	dkPub, err := dhkem.NewPublicKey(pk.key[:])
+	if err != nil {
+		return nil, nil, fmt.Errorf("x448: %w", err)
+	}
+
+	info := hpkeKEInfo(calg)
+	enc, sealedCEK, err := x448hpke.Seal(dkPub, aead, info, nil, cek)
+	if err != nil {
+		return nil, nil, fmt.Errorf("x448: %w", err)
+	}
+
+	return sealedCEK, enc, nil
+}
+
+// DecryptHPKE implements jwebb.HPKEKeyDecrypter. It decrypts the sealed CEK
+// using HPKE Base mode with DHKEM(X448, HKDF-SHA512).
+func (pk *PrivateKey) DecryptHPKE(sealedCEK []byte, alg, calg string, enc []byte) ([]byte, error) {
+	aead, err := hpkeAEAD(alg)
+	if err != nil {
+		return nil, err
+	}
+
+	dkPriv, err := dhkem.NewPrivateKey(pk.seed[:])
+	if err != nil {
+		return nil, fmt.Errorf("x448: %w", err)
+	}
+
+	info := hpkeKEInfo(calg)
+	cek, err := x448hpke.Open(dkPriv, aead, enc, info, nil, sealedCEK)
+	if err != nil {
+		return nil, fmt.Errorf("x448: %w", err)
+	}
+
+	return cek, nil
 }
 
 // --- JWK key export (JWK → raw x448 key) ---
