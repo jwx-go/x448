@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: ['dhkem']
+        package: ['dhkem', 'hpke']
     name: "Fuzz smoke ${{ matrix.package }}"
     steps:
       - name: Checkout repository
