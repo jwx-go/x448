@@ -26,11 +26,11 @@ func TestJWKRoundtrip(t *testing.T) {
 	privKey := x448mod.NewPrivateKey(seed, pub)
 
 	// Import private key to JWK
-	privJWK, err := jwk.Import[jwk.Key](privKey)
+	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 	require.NoError(t, err)
 	require.Equal(t, jwa.OKP(), privJWK.KeyType())
 
-	crv, ok := privJWK.(jwk.OKPPrivateKey).Crv()
+	crv, ok := privJWK.Crv()
 	require.True(t, ok)
 	require.Equal(t, jwa.X448(), crv)
 
@@ -42,7 +42,7 @@ func TestJWKRoundtrip(t *testing.T) {
 
 	// Import public key to JWK
 	pubKey := privKey.Public()
-	pubJWK, err := jwk.Import[jwk.Key](pubKey)
+	pubJWK, err := jwk.Import[jwk.OKPPublicKey](pubKey)
 	require.NoError(t, err)
 	require.Equal(t, jwa.OKP(), pubJWK.KeyType())
 
@@ -61,14 +61,11 @@ func TestJWKPublicKeyFromPrivate(t *testing.T) {
 	circlx448.KeyGen(&pub, &seed)
 
 	privKey := x448mod.NewPrivateKey(seed, pub)
-	privJWK, err := jwk.Import[jwk.Key](privKey)
+	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 	require.NoError(t, err)
 
 	pubJWK, err := privJWK.PublicKey()
 	require.NoError(t, err)
-
-	_, ok := pubJWK.(jwk.OKPPublicKey)
-	require.True(t, ok)
 
 	rawPub, err := jwk.Export[*x448mod.PublicKey](pubJWK)
 	require.NoError(t, err)
@@ -101,7 +98,7 @@ func TestJWE_ECDH_ES(t *testing.T) {
 			privKey := x448mod.NewPrivateKey(seed, pub)
 
 			// Import to JWK
-			privJWK, err := jwk.Import[jwk.Key](privKey)
+			privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 			require.NoError(t, err)
 
 			payload := []byte("Hello, X448 ECDH-ES!")
@@ -140,7 +137,7 @@ func TestJWE_ECDH_ES_RawKeys(t *testing.T) {
 	payload := []byte("Hello, X448 raw keys!")
 
 	// Encrypt using raw public key wrapper (via JWK)
-	pubJWK, err := jwk.Import[jwk.Key](pubKey)
+	pubJWK, err := jwk.Import[jwk.OKPPublicKey](pubKey)
 	require.NoError(t, err)
 
 	encrypted, err := jwe.Encrypt(payload,
@@ -150,7 +147,7 @@ func TestJWE_ECDH_ES_RawKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	// Decrypt using raw private key wrapper (via JWK)
-	privJWK, err := jwk.Import[jwk.Key](privKey)
+	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 	require.NoError(t, err)
 
 	decrypted, err := jwe.Decrypt(encrypted,
@@ -158,4 +155,52 @@ func TestJWE_ECDH_ES_RawKeys(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, payload, decrypted)
+}
+
+func TestJWE_HPKE(t *testing.T) {
+	testCases := []struct {
+		name string
+		alg  jwa.KeyEncryptionAlgorithm
+		enc  jwa.ContentEncryptionAlgorithm
+	}{
+		{"HPKE-5-KE/A128GCM", x448mod.HPKE5(), jwa.A128GCM()},
+		{"HPKE-5-KE/A256GCM", x448mod.HPKE5(), jwa.A256GCM()},
+		{"HPKE-5-KE/A128CBC-HS256", x448mod.HPKE5(), jwa.A128CBC_HS256()},
+		{"HPKE-5-KE/A256CBC-HS512", x448mod.HPKE5(), jwa.A256CBC_HS512()},
+		{"HPKE-6-KE/A128GCM", x448mod.HPKE6(), jwa.A128GCM()},
+		{"HPKE-6-KE/A256GCM", x448mod.HPKE6(), jwa.A256GCM()},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var seed circlx448.Key
+			_, err := rand.Read(seed[:])
+			require.NoError(t, err)
+
+			var pub circlx448.Key
+			circlx448.KeyGen(&pub, &seed)
+
+			privKey := x448mod.NewPrivateKey(seed, pub)
+
+			privJWK, err := jwk.Import[jwk.Key](privKey)
+			require.NoError(t, err)
+
+			pubJWK, err := privJWK.PublicKey()
+			require.NoError(t, err)
+
+			payload := []byte("Hello, X448 HPKE!")
+
+			encrypted, err := jwe.Encrypt(payload,
+				jwe.WithKey(tc.alg, pubJWK),
+				jwe.WithContentEncryption(tc.enc),
+			)
+			require.NoError(t, err, "encryption failed")
+
+			decrypted, err := jwe.Decrypt(encrypted,
+				jwe.WithKey(tc.alg, privJWK),
+			)
+			require.NoError(t, err, "decryption failed")
+			require.Equal(t, payload, decrypted)
+		})
+	}
 }
