@@ -1,5 +1,11 @@
 Changes
 =======
 
+v4.0.0-alpha2 8 Apr 2026
+  * Add DHKEM(X448, HKDF-SHA512) per RFC 9180 (dhkem sub-package).
+  * Add HPKE Base mode implementation (hpke sub-package).
+  * Register HPKE-5-KE (AES-256-GCM) and HPKE-6-KE (ChaCha20Poly1305) with jwx/v4.
+  * Bump jwx/v4 to v4.0.0-scratch.5.
+
 v4.0.0-alpha1 8 Apr 2026
   * Initial version: X448 ECDH-ES key agreement and JWK support for jwx/v4.
