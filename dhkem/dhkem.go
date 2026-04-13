@@ -191,12 +191,11 @@ func doDH(sk *PrivateKey, pk *PublicKey) ([]byte, error) {
 
 // extractAndExpand performs ExtractAndExpand per RFC 9180, Section 4.1:
 //
-//	shared_secret = ExtractAndExpand(dh, kem_context)
-//	  = LabeledExpand(LabeledExtract("", "shared_key", dh),
-//	                  "secret", kem_context, Nsecret)
+//	eae_prk = LabeledExtract("", "eae_prk", dh)
+//	shared_secret = LabeledExpand(eae_prk, "shared_secret", kem_context, Nsecret)
 func extractAndExpand(dh, kemContext []byte) []byte {
-	prk := labeledExtract(nil, []byte("shared_key"), dh)
-	return labeledExpand(prk, []byte("secret"), kemContext, Nsecret)
+	prk := labeledExtract(nil, []byte("eae_prk"), dh)
+	return labeledExpand(prk, []byte("shared_secret"), kemContext, Nsecret)
 }
 
 // labeledExtract per RFC 9180, Section 4:
