@@ -14,6 +14,11 @@
 // HPKE algorithms (HPKE-5-KE, HPKE-6-KE) with the jwx library. After
 // importing, OKP keys with curve "X448" can be used with jwe.Encrypt and
 // jwe.Decrypt using ECDH-ES and HPKE algorithms.
+//
+// Registration happens in init(). If any underlying jwx Register* call
+// returns an error, init() panics — importing this package will crash the
+// program at load time. This is the house style across all jwx-go extension
+// modules.
 package x448
 
 import (
@@ -52,22 +57,33 @@ func HPKE6() jwa.KeyEncryptionAlgorithm { return hpke6ke }
 
 func init() {
 	// Register JWK exporter for OKP:X448 keys (JWK → raw x448 key)
-	jwk.RegisterKeyExporter(jwk.KeyKind("OKP:X448"), jwk.KeyExportFunc(exportX448Key))
+	panicOnRegistrationError(jwk.RegisterKeyExporter(jwk.KeyKind("OKP:X448"), jwk.KeyExportFunc(exportX448Key)))
 
 	// Register raw key importer for X448 keys
-	jwk.RegisterOKPRawKeyImporter(importX448RawKey)
+	panicOnRegistrationError(jwk.RegisterOKPRawKeyImporter(importX448RawKey))
 
 	// Register jwk.Import handlers for X448 key types (raw x448 key → JWK)
-	jwk.RegisterKeyImporter(importX448PublicKey)
-	jwk.RegisterKeyImporter(importX448PrivateKey)
+	panicOnRegistrationError(jwk.RegisterKeyImporter(importX448PublicKey))
+	panicOnRegistrationError(jwk.RegisterKeyImporter(importX448PrivateKey))
 
 	// Register HPKE key encryption algorithms
-	jwa.RegisterKeyEncryptionAlgorithm(hpke5ke)
-	jwa.RegisterKeyEncryptionAlgorithm(hpke6ke)
+	panicOnRegistrationError(jwa.RegisterKeyEncryptionAlgorithm(hpke5ke))
+	panicOnRegistrationError(jwa.RegisterKeyEncryptionAlgorithm(hpke6ke))
 
 	// Register as HPKE algorithms so IsHPKE() returns true
-	jwebb.RegisterHPKEAlgorithm(HPKE5KE)
-	jwebb.RegisterHPKEAlgorithm(HPKE6KE)
+	panicOnRegistrationError(jwebb.RegisterHPKEAlgorithm(HPKE5KE))
+	panicOnRegistrationError(jwebb.RegisterHPKEAlgorithm(HPKE6KE))
+}
+
+// panicOnRegistrationError converts a non-nil error returned by a jwx
+// Register* call during init() into an import-time panic. The rule
+// (documented in jwx's internals.md) is that a failed Register* leaves
+// the extension unusable, so we surface it immediately instead of
+// letting the program continue in a broken state.
+func panicOnRegistrationError(err error) {
+	if err != nil {
+		panic(fmt.Sprintf("jwx-go/x448: registration failed: %s", err))
+	}
 }
 
 // hpkeAEAD maps an HPKE algorithm identifier to the corresponding AEAD.
