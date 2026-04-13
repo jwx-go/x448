@@ -1,6 +1,9 @@
 Changes
 =======
 
+v4.0.0-alpha3 13 Apr 2026
+  * Compatibility release for jwx/v4 v4.0.0-scratch.15. No code changes.
+
 v4.0.0-alpha2 8 Apr 2026
   * Add DHKEM(X448, HKDF-SHA512) per RFC 9180 (dhkem sub-package).
   * Add HPKE Base mode implementation (hpke sub-package).
