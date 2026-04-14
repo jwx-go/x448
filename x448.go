@@ -27,12 +27,12 @@ import (
 
 	"github.com/cloudflare/circl/dh/x448"
 	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwe/jwebb"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jwk/jwkunsafe"
-	"github.com/lestrrat-go/jwx/v4/jwe/jwebb"
 
-	x448hpke "github.com/jwx-go/x448/v4/hpke"
 	"github.com/jwx-go/x448/v4/dhkem"
+	x448hpke "github.com/jwx-go/x448/v4/hpke"
 )
 
 // HPKE algorithm identifiers per draft-ietf-jose-hpke-encrypt.
