@@ -24,6 +24,10 @@ import _ "github.com/jwx-go/x448/v4"
 
 Go's standard library does not include X448 support. The only viable implementation comes from `github.com/cloudflare/circl`, which is a large dependency. Rather than forcing every `jwx` user to pull in `circl`, X448 support is provided as an opt-in companion module.
 
+# Backend
+
+This module is implemented on top of `github.com/cloudflare/circl` (tested against `v1.6.3`). The wrapper relies on one security-critical contract: circl's `x448.Shared` MUST return `false` when the input would produce a low-order / all-zero shared secret, per [RFC 7748 §6.2](https://www.rfc-editor.org/rfc/rfc7748#section-6.2). Every `x448.Shared` call site in this module checks that return value; any backend swap (upgrade, fork, or a hypothetical future `crypto/ecdh` X448) must preserve an equivalent signal and continue to have it checked.
+
 # Installation
 
 ```
