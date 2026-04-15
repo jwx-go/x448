@@ -42,7 +42,7 @@ func TestExtractAndExpandUsesRFC9180Labels(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Spec-correct construction: "eae_prk" then "shared_secret".
-			expectedPrk := labeledExtract(nil, []byte("eae_prk"), tc.dh)
+			expectedPrk := labeledExtract([]byte("eae_prk"), tc.dh)
 			expected := labeledExpand(expectedPrk, []byte("shared_secret"), tc.kemContext, Nsecret)
 
 			actual := extractAndExpand(tc.dh, tc.kemContext)
@@ -64,7 +64,7 @@ func TestExtractAndExpandRejectsLegacyLabels(t *testing.T) {
 	kemContext := patterned(Nenc+Npk, 0xaa)
 
 	// Reconstruct what the buggy implementation would have produced.
-	legacyPrk := labeledExtract(nil, []byte("shared_key"), dh)
+	legacyPrk := labeledExtract([]byte("shared_key"), dh)
 	legacyOutput := labeledExpand(legacyPrk, []byte("secret"), kemContext, Nsecret)
 
 	actual := extractAndExpand(dh, kemContext)
