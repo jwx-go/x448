@@ -20,10 +20,7 @@ func TestJWKRoundtrip(t *testing.T) {
 	_, err := rand.Read(seed[:])
 	require.NoError(t, err)
 
-	var pub circlx448.Key
-	circlx448.KeyGen(&pub, &seed)
-
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 
 	// Import private key to JWK
 	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
@@ -60,7 +57,7 @@ func TestJWKPublicKeyFromPrivate(t *testing.T) {
 	var pub circlx448.Key
 	circlx448.KeyGen(&pub, &seed)
 
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 	require.NoError(t, err)
 
@@ -119,10 +116,7 @@ func TestJWE_ECDH_ES(t *testing.T) {
 			_, err := rand.Read(seed[:])
 			require.NoError(t, err)
 
-			var pub circlx448.Key
-			circlx448.KeyGen(&pub, &seed)
-
-			privKey := x448mod.NewPrivateKey(seed, pub)
+			privKey := x448mod.NewPrivateKey(seed)
 
 			// Import to JWK
 			privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
@@ -155,10 +149,7 @@ func TestJWE_ECDH_ES_RawKeys(t *testing.T) {
 	_, err := rand.Read(seed[:])
 	require.NoError(t, err)
 
-	var pub circlx448.Key
-	circlx448.KeyGen(&pub, &seed)
-
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 	pubKey := privKey.Public()
 
 	payload := []byte("Hello, X448 raw keys!")
@@ -204,10 +195,7 @@ func TestJWE_HPKE(t *testing.T) {
 			_, err := rand.Read(seed[:])
 			require.NoError(t, err)
 
-			var pub circlx448.Key
-			circlx448.KeyGen(&pub, &seed)
-
-			privKey := x448mod.NewPrivateKey(seed, pub)
+			privKey := x448mod.NewPrivateKey(seed)
 
 			privJWK, err := jwk.Import[jwk.Key](privKey)
 			require.NoError(t, err)
@@ -230,4 +218,32 @@ func TestJWE_HPKE(t *testing.T) {
 			require.Equal(t, payload, decrypted)
 		})
 	}
+}
+
+// TestECDH_LowOrderRejection locks in the RFC 7748 §6.2 guard: feeding an
+// all-zero (low-order) X448 public key into the ECDH-ES path must fail rather
+// than silently producing an all-zero shared secret. If a future backend swap
+// drops the !x448.Shared(...) check, this test fails instead of the library
+// quietly accepting attacker-chosen low-order peers.
+func TestECDH_LowOrderRejection(t *testing.T) {
+	var zero circlx448.Key // all-zero point, rejected by x448.Shared
+
+	t.Run("GenerateECDHES rejects low-order peer public key", func(t *testing.T) {
+		peer := x448mod.NewPublicKey(zero)
+		_, _, err := peer.GenerateECDHES("ECDH-ES", 32, nil, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "low-order public key")
+	})
+
+	t.Run("DeriveECDHES rejects low-order ephemeral public key", func(t *testing.T) {
+		var seed circlx448.Key
+		_, err := rand.Read(seed[:])
+		require.NoError(t, err)
+		priv := x448mod.NewPrivateKey(seed)
+
+		ephPub := x448mod.NewPublicKey(zero)
+		_, err = priv.DeriveECDHES("ECDH-ES", 32, ephPub, nil, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "low-order ephemeral key")
+	})
 }

@@ -125,7 +125,7 @@ func DeriveKeyPair(ikm []byte) (*PrivateKey, error) {
 		return nil, fmt.Errorf("dhkem: ikm too short %d (need at least %d)", len(ikm), Nsk)
 	}
 
-	dkpPrk := labeledExtract(nil, []byte("dkp_prk"), ikm)
+	dkpPrk := labeledExtract([]byte("dkp_prk"), ikm)
 	skBytes := labeledExpand(dkpPrk, []byte("sk"), nil, Nsk)
 
 	var seed x448.Key
@@ -182,6 +182,8 @@ func Decap(enc []byte, skR *PrivateKey) ([]byte, error) {
 
 // doDH performs the X448 Diffie-Hellman operation.
 func doDH(sk *PrivateKey, pk *PublicKey) ([]byte, error) {
+	// x448.Shared returns false on low-order / all-zero-output inputs; this is
+	// our RFC 7748 §6.2 guard and must be preserved across backend updates.
 	var shared x448.Key
 	if !x448.Shared(&shared, &sk.seed, &pk.key) {
 		return nil, fmt.Errorf("DH failed (low-order point)")
@@ -194,7 +196,7 @@ func doDH(sk *PrivateKey, pk *PublicKey) ([]byte, error) {
 //	eae_prk = LabeledExtract("", "eae_prk", dh)
 //	shared_secret = LabeledExpand(eae_prk, "shared_secret", kem_context, Nsecret)
 func extractAndExpand(dh, kemContext []byte) []byte {
-	prk := labeledExtract(nil, []byte("eae_prk"), dh)
+	prk := labeledExtract([]byte("eae_prk"), dh)
 	return labeledExpand(prk, []byte("shared_secret"), kemContext, Nsecret)
 }
 
@@ -202,9 +204,12 @@ func extractAndExpand(dh, kemContext []byte) []byte {
 //
 //	LabeledExtract(salt, label, ikm) =
 //	  Extract(salt, concat("HPKE-v1", suite_id, label, ikm))
-func labeledExtract(salt, label, ikm []byte) []byte {
+//
+// DHKEM(X448, HKDF-SHA512) always uses an empty salt, so the salt
+// parameter from the spec is omitted here.
+func labeledExtract(label, ikm []byte) []byte {
 	labeled := buildLabeledIKM(label, ikm)
-	return hkdfExtract(salt, labeled)
+	return hkdfExtract(nil, labeled)
 }
 
 // labeledExpand per RFC 9180, Section 4:
