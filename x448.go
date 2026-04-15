@@ -19,6 +19,22 @@
 // returns an error, init() panics — importing this package will crash the
 // program at load time. This is the house style across all jwx-go extension
 // modules.
+//
+// # Security contract for X448 backends
+//
+// This module wraps github.com/cloudflare/circl's X448 implementation. Any
+// backend swap (different circl version, fork, or future stdlib X448) MUST
+// preserve the following properties, which the wrapper relies on for
+// correctness under adversarial inputs:
+//
+//  1. The scalar-multiplication primitive MUST reject low-order / all-zero
+//     shared-secret outputs per RFC 7748 §6.2. circl's x448.Shared signals
+//     this by returning false; every call site in this module checks that
+//     return value, and removing those checks would allow an attacker who
+//     supplies a low-order peer public key to force an all-zero shared
+//     secret into the Concat-KDF / HKDF input.
+//  2. Scalar multiplication MUST run in constant time with respect to the
+//     private scalar.
 package x448
 
 import (
@@ -181,6 +197,8 @@ func (pk *PublicKey) GenerateECDHES(alg string, keysize int, apu, apv []byte) ([
 	var ephPub x448.Key
 	x448.KeyGen(&ephPub, &ephSeed)
 
+	// x448.Shared returns false on low-order / all-zero-output inputs; this is
+	// our RFC 7748 §6.2 guard and must be preserved across backend updates.
 	var shared x448.Key
 	if !x448.Shared(&shared, &ephSeed, &pk.key) {
 		return nil, nil, fmt.Errorf(`x448: ECDH failed (low-order public key)`)
@@ -208,6 +226,8 @@ func (pk *PrivateKey) DeriveECDHES(alg string, keysize int, ephemeralPubKey any,
 		return nil, fmt.Errorf(`x448: unexpected ephemeral public key type %T`, ephemeralPubKey)
 	}
 
+	// x448.Shared returns false on low-order / all-zero-output inputs; this is
+	// our RFC 7748 §6.2 guard and must be preserved across backend updates.
 	var shared x448.Key
 	if !x448.Shared(&shared, &pk.seed, &ephPub) {
 		return nil, fmt.Errorf(`x448: ECDH failed (low-order ephemeral key)`)

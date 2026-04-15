@@ -182,6 +182,8 @@ func Decap(enc []byte, skR *PrivateKey) ([]byte, error) {
 
 // doDH performs the X448 Diffie-Hellman operation.
 func doDH(sk *PrivateKey, pk *PublicKey) ([]byte, error) {
+	// x448.Shared returns false on low-order / all-zero-output inputs; this is
+	// our RFC 7748 §6.2 guard and must be preserved across backend updates.
 	var shared x448.Key
 	if !x448.Shared(&shared, &sk.seed, &pk.key) {
 		return nil, fmt.Errorf("DH failed (low-order point)")
