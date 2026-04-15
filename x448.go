@@ -102,6 +102,24 @@ func panicOnRegistrationError(err error) {
 	}
 }
 
+// validateECDHESAlg whitelists the alg strings jwebb is allowed to hand to
+// GenerateECDHES / DeriveECDHES. For ECDH-ES direct key agreement, jwebb
+// substitutes the JWE "enc" value as the derivedAlg (RFC 7518 §4.6 ConcatKDF
+// AlgorithmID); for the ECDH-ES+A*KW variants it keeps the key-wrap alg. A
+// mis-wired backend calling into the X448 path with e.g. "HPKE-5-KE", "dir",
+// or "RSA-OAEP" must fail loudly rather than reach the derivation helper.
+// Defense in depth: normal dispatch already filters upstream.
+func validateECDHESAlg(alg string) error {
+	switch alg {
+	case "A128GCM", "A192GCM", "A256GCM",
+		"A128CBC-HS256", "A192CBC-HS384", "A256CBC-HS512",
+		"ECDH-ES+A128KW", "ECDH-ES+A192KW", "ECDH-ES+A256KW":
+		return nil
+	default:
+		return fmt.Errorf(`x448: unsupported ECDH-ES derivedAlg %q`, alg)
+	}
+}
+
 // hpkeAEAD maps an HPKE algorithm identifier to the corresponding AEAD.
 func hpkeAEAD(alg string) (x448hpke.AEAD, error) {
 	switch alg {
@@ -189,6 +207,10 @@ func (pk *PublicKey) Bytes() []byte {
 // X448 key pair, computes the ECDH shared secret, and derives the KEK via
 // Concat KDF (SHA-256).
 func (pk *PublicKey) GenerateECDHES(alg string, keysize int, apu, apv []byte) ([]byte, any, error) {
+	if err := validateECDHESAlg(alg); err != nil {
+		return nil, nil, err
+	}
+
 	var ephSeed x448.Key
 	if _, err := rand.Read(ephSeed[:]); err != nil {
 		return nil, nil, fmt.Errorf(`x448: failed to generate ephemeral key: %w`, err)
@@ -216,6 +238,10 @@ func (pk *PublicKey) GenerateECDHES(alg string, keysize int, apu, apv []byte) ([
 // secret using this private key and the given ephemeral public key, then
 // derives the KEK via Concat KDF (SHA-256).
 func (pk *PrivateKey) DeriveECDHES(alg string, keysize int, ephemeralPubKey any, apu, apv []byte) ([]byte, error) {
+	if err := validateECDHESAlg(alg); err != nil {
+		return nil, err
+	}
+
 	var ephPub x448.Key
 	switch epk := ephemeralPubKey.(type) {
 	case *PublicKey:

@@ -203,7 +203,7 @@ func TestECDH_LowOrderRejection(t *testing.T) {
 
 	t.Run("GenerateECDHES rejects low-order peer public key", func(t *testing.T) {
 		peer := x448mod.NewPublicKey(zero)
-		_, _, err := peer.GenerateECDHES("ECDH-ES", 32, nil, nil)
+		_, _, err := peer.GenerateECDHES("A256GCM", 32, nil, nil)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "low-order public key")
 	})
@@ -215,8 +215,50 @@ func TestECDH_LowOrderRejection(t *testing.T) {
 		priv := x448mod.NewPrivateKey(seed)
 
 		ephPub := x448mod.NewPublicKey(zero)
-		_, err = priv.DeriveECDHES("ECDH-ES", 32, ephPub, nil, nil)
+		_, err = priv.DeriveECDHES("A256GCM", 32, ephPub, nil, nil)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "low-order ephemeral key")
 	})
+}
+
+// TestECDHESAlgGuard locks in the defensive whitelist on GenerateECDHES and
+// DeriveECDHES. jwebb hands in the *derivedAlg* — the JWE "enc" for direct
+// ECDH-ES, the "alg" for the ECDH-ES+A*KW variants — so anything outside
+// that set (HPKE-*, RSA-*, dir, PBES2-*, the outer "ECDH-ES" identifier,
+// etc.) must fail loudly instead of reaching the derivation helper.
+func TestECDHESAlgGuard(t *testing.T) {
+	var seed circlx448.Key
+	_, err := rand.Read(seed[:])
+	require.NoError(t, err)
+
+	priv := x448mod.NewPrivateKey(seed)
+	pub := priv.Public()
+
+	rejected := []string{"HPKE-5-KE", "RSA-OAEP", "dir", "PBES2-HS256+A128KW", "ECDH-ES", "A128KW", "", "a128gcm"}
+	for _, alg := range rejected {
+		t.Run("GenerateECDHES/"+alg, func(t *testing.T) {
+			_, _, err := pub.GenerateECDHES(alg, 32, nil, nil)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "unsupported ECDH-ES derivedAlg")
+		})
+		t.Run("DeriveECDHES/"+alg, func(t *testing.T) {
+			_, err := priv.DeriveECDHES(alg, 32, pub, nil, nil)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "unsupported ECDH-ES derivedAlg")
+		})
+	}
+
+	// Happy-path sanity: every alg jwebb actually passes in must still work.
+	// These are the direct-mode enc algs plus the ECDH-ES+A*KW variants.
+	accepted := []string{
+		"A128GCM", "A192GCM", "A256GCM",
+		"A128CBC-HS256", "A192CBC-HS384", "A256CBC-HS512",
+		"ECDH-ES+A128KW", "ECDH-ES+A192KW", "ECDH-ES+A256KW",
+	}
+	for _, alg := range accepted {
+		t.Run("GenerateECDHES_accept/"+alg, func(t *testing.T) {
+			_, _, err := pub.GenerateECDHES(alg, 32, nil, nil)
+			require.NoError(t, err)
+		})
+	}
 }
