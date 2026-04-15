@@ -20,10 +20,7 @@ func TestJWKRoundtrip(t *testing.T) {
 	_, err := rand.Read(seed[:])
 	require.NoError(t, err)
 
-	var pub circlx448.Key
-	circlx448.KeyGen(&pub, &seed)
-
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 
 	// Import private key to JWK
 	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
@@ -60,7 +57,7 @@ func TestJWKPublicKeyFromPrivate(t *testing.T) {
 	var pub circlx448.Key
 	circlx448.KeyGen(&pub, &seed)
 
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
 	require.NoError(t, err)
 
@@ -92,10 +89,7 @@ func TestJWE_ECDH_ES(t *testing.T) {
 			_, err := rand.Read(seed[:])
 			require.NoError(t, err)
 
-			var pub circlx448.Key
-			circlx448.KeyGen(&pub, &seed)
-
-			privKey := x448mod.NewPrivateKey(seed, pub)
+			privKey := x448mod.NewPrivateKey(seed)
 
 			// Import to JWK
 			privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
@@ -128,10 +122,7 @@ func TestJWE_ECDH_ES_RawKeys(t *testing.T) {
 	_, err := rand.Read(seed[:])
 	require.NoError(t, err)
 
-	var pub circlx448.Key
-	circlx448.KeyGen(&pub, &seed)
-
-	privKey := x448mod.NewPrivateKey(seed, pub)
+	privKey := x448mod.NewPrivateKey(seed)
 	pubKey := privKey.Public()
 
 	payload := []byte("Hello, X448 raw keys!")
@@ -177,10 +168,7 @@ func TestJWE_HPKE(t *testing.T) {
 			_, err := rand.Read(seed[:])
 			require.NoError(t, err)
 
-			var pub circlx448.Key
-			circlx448.KeyGen(&pub, &seed)
-
-			privKey := x448mod.NewPrivateKey(seed, pub)
+			privKey := x448mod.NewPrivateKey(seed)
 
 			privJWK, err := jwk.Import[jwk.Key](privKey)
 			require.NoError(t, err)
