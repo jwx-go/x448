@@ -128,8 +128,13 @@ type PrivateKey struct {
 	pub  x448.Key
 }
 
-// NewPrivateKey creates a new PrivateKey from a seed and public key.
-func NewPrivateKey(seed, pub x448.Key) *PrivateKey {
+// NewPrivateKey creates a new PrivateKey from a seed. The public key is
+// derived from the seed via x448.KeyGen; callers cannot supply a "pub"
+// that disagrees with the seed, which previously allowed the importer to
+// write a JWK whose "x" field did not match "d".
+func NewPrivateKey(seed x448.Key) *PrivateKey {
+	var pub x448.Key
+	x448.KeyGen(&pub, &seed)
 	return &PrivateKey{seed: seed, pub: pub}
 }
 
