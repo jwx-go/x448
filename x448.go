@@ -22,17 +22,18 @@
 package x448
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 
 	"github.com/cloudflare/circl/dh/x448"
 	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwe/jwebb"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jwk/jwkunsafe"
-	"github.com/lestrrat-go/jwx/v4/jwe/jwebb"
 
-	x448hpke "github.com/jwx-go/x448/v4/hpke"
 	"github.com/jwx-go/x448/v4/dhkem"
+	x448hpke "github.com/jwx-go/x448/v4/hpke"
 )
 
 // HPKE algorithm identifiers per draft-ietf-jose-hpke-encrypt.
@@ -128,9 +129,19 @@ type PrivateKey struct {
 	pub  x448.Key
 }
 
+func newPrivateKey(seed x448.Key) *PrivateKey {
+	pk := &PrivateKey{seed: seed}
+	x448.KeyGen(&pk.pub, &pk.seed)
+	return pk
+}
+
 // NewPrivateKey creates a new PrivateKey from a seed and public key.
-func NewPrivateKey(seed, pub x448.Key) *PrivateKey {
-	return &PrivateKey{seed: seed, pub: pub}
+//
+// The public key is always derived from seed. The pub parameter is retained
+// for backward compatibility with earlier callers that already had the public
+// key available.
+func NewPrivateKey(seed, _ x448.Key) *PrivateKey {
+	return newPrivateKey(seed)
 }
 
 // NewPublicKey creates a new PublicKey from a raw X448 public key.
@@ -286,15 +297,12 @@ func exportX448Key(key jwk.Key, _ any) (any, error) {
 		copy(seed[:], d)
 
 		// Verify x matches the public key derived from d
-		var pub x448.Key
-		x448.KeyGen(&pub, &seed)
-		for i := range pub {
-			if pub[i] != x[i] {
-				return nil, fmt.Errorf(`x448: invalid x value given d value`)
-			}
+		priv := newPrivateKey(seed)
+		if !bytes.Equal(priv.pub[:], x) {
+			return nil, fmt.Errorf(`x448: invalid x value given d value`)
 		}
 
-		return &PrivateKey{seed: seed, pub: pub}, nil
+		return priv, nil
 	case jwk.OKPPublicKey:
 		x, ok := key.X()
 		if !ok {
@@ -320,9 +328,11 @@ func importX448RawKey(key any) (jwa.EllipticCurveAlgorithm, []byte, []byte, bool
 	case PublicKey:
 		return x448Curve, k.key[:], nil, true
 	case *PrivateKey:
-		return x448Curve, k.pub[:], k.seed[:], true
+		priv := newPrivateKey(k.seed)
+		return x448Curve, priv.pub[:], k.seed[:], true
 	case PrivateKey:
-		return x448Curve, k.pub[:], k.seed[:], true
+		priv := newPrivateKey(k.seed)
+		return x448Curve, priv.pub[:], k.seed[:], true
 	}
 	return jwa.InvalidEllipticCurve(), nil, nil, false
 }
@@ -335,7 +345,8 @@ func importX448PrivateKey(src *PrivateKey) (jwk.Key, error) {
 	if err := key.Set(jwk.OKPCrvKey, x448Curve); err != nil {
 		return nil, err
 	}
-	if err := key.Set(jwk.OKPXKey, src.pub[:]); err != nil {
+	priv := newPrivateKey(src.seed)
+	if err := key.Set(jwk.OKPXKey, priv.pub[:]); err != nil {
 		return nil, err
 	}
 	if err := key.Set(jwk.OKPDKey, src.seed[:]); err != nil {

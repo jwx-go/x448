@@ -72,6 +72,33 @@ func TestJWKPublicKeyFromPrivate(t *testing.T) {
 	require.Equal(t, pub[:], rawPub.Bytes())
 }
 
+func TestNewPrivateKeyDerivesPublicKeyFromSeed(t *testing.T) {
+	var seed circlx448.Key
+	_, err := rand.Read(seed[:])
+	require.NoError(t, err)
+
+	var expectedPub circlx448.Key
+	circlx448.KeyGen(&expectedPub, &seed)
+
+	var otherSeed circlx448.Key
+	_, err = rand.Read(otherSeed[:])
+	require.NoError(t, err)
+
+	var mismatchedPub circlx448.Key
+	circlx448.KeyGen(&mismatchedPub, &otherSeed)
+
+	privKey := x448mod.NewPrivateKey(seed, mismatchedPub)
+	require.Equal(t, expectedPub[:], privKey.Public().Bytes())
+	require.Equal(t, expectedPub[:], privKey.PublicKeyBytes())
+
+	privJWK, err := jwk.Import[jwk.OKPPrivateKey](privKey)
+	require.NoError(t, err)
+
+	x, ok := privJWK.X()
+	require.True(t, ok)
+	require.Equal(t, expectedPub[:], x)
+}
+
 func TestJWE_ECDH_ES(t *testing.T) {
 	testCases := []struct {
 		name string
