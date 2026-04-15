@@ -38,6 +38,7 @@
 package x448
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 
@@ -313,10 +314,8 @@ func exportX448Key(key jwk.Key, _ any) (any, error) {
 		// Verify x matches the public key derived from d
 		var pub x448.Key
 		x448.KeyGen(&pub, &seed)
-		for i := range pub {
-			if pub[i] != x[i] {
-				return nil, fmt.Errorf(`x448: invalid x value given d value`)
-			}
+		if !bytes.Equal(pub[:], x) {
+			return nil, fmt.Errorf(`x448: invalid x value given d value`)
 		}
 
 		return &PrivateKey{seed: seed, pub: pub}, nil
