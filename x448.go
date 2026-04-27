@@ -110,15 +110,22 @@ func panicOnRegistrationError(err error) {
 // mis-wired backend calling into the X448 path with e.g. "HPKE-5-KE", "dir",
 // or "RSA-OAEP" must fail loudly rather than reach the derivation helper.
 // Defense in depth: normal dispatch already filters upstream.
+//
+// The accept set is "any registered ContentEncryption alg" plus the three
+// canonical ECDH-ES+A*KW variants. Hardcoding the content-encryption
+// names here used to silently reject any new alg a caller registered via
+// jwa.RegisterContentEncryptionAlgorithm — the X25519 path going through
+// the stdlib accepted them while the X448 path refused them with an
+// opaque error.
 func validateECDHESAlg(alg string) error {
 	switch alg {
-	case "A128GCM", "A192GCM", "A256GCM",
-		"A128CBC-HS256", "A192CBC-HS384", "A256CBC-HS512",
-		"ECDH-ES+A128KW", "ECDH-ES+A192KW", "ECDH-ES+A256KW":
+	case "ECDH-ES+A128KW", "ECDH-ES+A192KW", "ECDH-ES+A256KW":
 		return nil
-	default:
-		return fmt.Errorf(`x448: unsupported ECDH-ES derivedAlg %q`, alg)
 	}
+	if _, ok := jwa.LookupContentEncryptionAlgorithm(alg); ok {
+		return nil
+	}
+	return fmt.Errorf(`x448: unsupported ECDH-ES derivedAlg %q`, alg)
 }
 
 // hpkeAEAD maps an HPKE algorithm identifier to the corresponding AEAD.
