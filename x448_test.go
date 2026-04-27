@@ -263,6 +263,43 @@ func TestECDHESAlgGuard(t *testing.T) {
 	}
 }
 
+// TestECDHESAlgGuardAcceptsCustomContentEncryption pins that
+// validateECDHESAlg delegates to jwa.LookupContentEncryptionAlgorithm
+// instead of hardcoding the canonical AES-CBC-HMAC / GCM names. A
+// caller registering a new content-encryption alg (e.g. via
+// jwa.RegisterContentEncryptionAlgorithm) used to find that X448's
+// ECDH-ES dispatch refused it with "unsupported ECDH-ES derivedAlg"
+// while X25519 (going through stdlib) silently accepted it. After
+// the fix, the X448 path tracks jwa's vocabulary and accepts any
+// registered ContentEncryption value the dispatcher passes in.
+func TestECDHESAlgGuardAcceptsCustomContentEncryption(t *testing.T) {
+	const customAlg = "TESTALG-CE-X448-001"
+	custom := jwa.NewContentEncryptionAlgorithm(customAlg)
+	require.NoError(t, jwa.RegisterContentEncryptionAlgorithm(custom))
+	t.Cleanup(func() { jwa.UnregisterContentEncryptionAlgorithm(custom) })
+
+	var seed circlx448.Key
+	_, err := rand.Read(seed[:])
+	require.NoError(t, err)
+	priv := x448mod.NewPrivateKey(seed)
+	pub := priv.Public()
+
+	t.Run("GenerateECDHES accepts custom ContentEncryption", func(t *testing.T) {
+		_, _, err := pub.GenerateECDHES(customAlg, 32, nil, nil)
+		require.NoError(t, err,
+			`X448 ECDH-ES dispatch must accept newly-registered ContentEncryption algs`)
+	})
+
+	t.Run("DeriveECDHES accepts custom ContentEncryption", func(t *testing.T) {
+		_, ephPubAny, err := pub.GenerateECDHES(customAlg, 32, nil, nil)
+		require.NoError(t, err)
+		ephPub, ok := ephPubAny.(*x448mod.PublicKey)
+		require.True(t, ok)
+		_, err = priv.DeriveECDHES(customAlg, 32, ephPub, nil, nil)
+		require.NoError(t, err)
+	})
+}
+
 // TestJWKImportRejectsNilTypedPointers pins that jwk.Import on a
 // typed-nil *x448.PublicKey or *x448.PrivateKey does not panic.
 // The pointer arms of importX448RawKey previously dereferenced
