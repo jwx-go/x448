@@ -262,3 +262,29 @@ func TestECDHESAlgGuard(t *testing.T) {
 		})
 	}
 }
+
+// TestJWKImportRejectsNilTypedPointers pins that jwk.Import on a
+// typed-nil *x448.PublicKey or *x448.PrivateKey does not panic.
+// The pointer arms of importX448RawKey previously dereferenced
+// k.key[:] / k.pub[:] / k.seed[:] without checking k for nil; a
+// caller passing var p *x448.PublicKey (nil) to jwk.Import
+// crashes the host process.
+//
+// Misuse-only path — a sane caller wouldn't construct a nil typed
+// pointer and pass it to jwk.Import — but the importer's contract
+// is "I tell jwk whether I accept this value", so returning false
+// is the correct response. A panic from a misuse-shaped input is a
+// robustness defect.
+func TestJWKImportRejectsNilTypedPointers(t *testing.T) {
+	t.Run("nil *PublicKey", func(t *testing.T) {
+		var p *x448mod.PublicKey
+		_, err := jwk.Import[jwk.Key](p)
+		require.Error(t, err, `jwk.Import must reject a nil typed *PublicKey without panicking`)
+	})
+
+	t.Run("nil *PrivateKey", func(t *testing.T) {
+		var p *x448mod.PrivateKey
+		_, err := jwk.Import[jwk.Key](p)
+		require.Error(t, err, `jwk.Import must reject a nil typed *PrivateKey without panicking`)
+	})
+}

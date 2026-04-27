@@ -366,10 +366,22 @@ func exportX448Key(key jwk.Key, _ any) (any, error) {
 func importX448RawKey(key any) (jwa.EllipticCurveAlgorithm, []byte, []byte, bool) {
 	switch k := key.(type) {
 	case *PublicKey:
+		// Defensive: a nil typed pointer would dereference below.
+		// Currently unreachable from jwk.Import (the more specific
+		// importX448PublicKey wins for *PublicKey), but the
+		// importer's contract is "I tell jwk whether I accept this
+		// value", so returning false on nil keeps the contract clean
+		// regardless of dispatch order.
+		if k == nil {
+			return jwa.InvalidEllipticCurve(), nil, nil, false
+		}
 		return x448Curve, k.key[:], nil, true
 	case PublicKey:
 		return x448Curve, k.key[:], nil, true
 	case *PrivateKey:
+		if k == nil {
+			return jwa.InvalidEllipticCurve(), nil, nil, false
+		}
 		return x448Curve, k.pub[:], k.seed[:], true
 	case PrivateKey:
 		return x448Curve, k.pub[:], k.seed[:], true
@@ -378,6 +390,9 @@ func importX448RawKey(key any) (jwa.EllipticCurveAlgorithm, []byte, []byte, bool
 }
 
 func importX448PrivateKey(src *PrivateKey) (jwk.Key, error) {
+	if src == nil {
+		return nil, fmt.Errorf(`x448: cannot import nil *PrivateKey`)
+	}
 	key, err := jwkunsafe.NewKey(jwa.OKP())
 	if err != nil {
 		return nil, fmt.Errorf(`failed to create OKP private key: %w`, err)
@@ -395,6 +410,9 @@ func importX448PrivateKey(src *PrivateKey) (jwk.Key, error) {
 }
 
 func importX448PublicKey(src *PublicKey) (jwk.Key, error) {
+	if src == nil {
+		return nil, fmt.Errorf(`x448: cannot import nil *PublicKey`)
+	}
 	key, err := jwkunsafe.NewPublicKey(jwa.OKP())
 	if err != nil {
 		return nil, fmt.Errorf(`failed to create OKP public key: %w`, err)
