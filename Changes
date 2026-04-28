@@ -1,6 +1,12 @@
 Changes
 =======
 
+v4.0.1 28 Apr 2026
+  * `validateECDHESAlg` now accepts any registered `ContentEncryption`
+    algorithm (was previously hardcoded to a fixed subset).
+  * Guard the X448 raw-key importers against nil typed pointers — they
+    now return an error instead of dereferencing.
+
 v4.0.0 19 Apr 2026
   * First stable v4 release. Tracks github.com/lestrrat-go/jwx/v4 v4.0.0.
 
