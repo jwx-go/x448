@@ -80,8 +80,8 @@ func init() {
 	panicOnRegistrationError(jwk.RegisterOKPRawKeyImporter(jwk.OKPRawKeyImporterFunc(importX448RawKey)))
 
 	// Register jwk.Import handlers for X448 key types (raw x448 key → JWK)
-	panicOnRegistrationError(jwk.RegisterKeyImporter(importX448PublicKey))
-	panicOnRegistrationError(jwk.RegisterKeyImporter(importX448PrivateKey))
+	panicOnRegistrationError(jwk.RegisterKeyImporter(jwk.KeyImportFunc[*PublicKey](importX448PublicKey)))
+	panicOnRegistrationError(jwk.RegisterKeyImporter(jwk.KeyImportFunc[*PrivateKey](importX448PrivateKey)))
 
 	// Register HPKE key encryption algorithms
 	panicOnRegistrationError(jwa.RegisterKeyEncryptionAlgorithm(hpke5ke))
