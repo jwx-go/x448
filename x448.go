@@ -400,6 +400,19 @@ func importX448PrivateKey(src *PrivateKey) (jwk.Key, error) {
 	if src == nil {
 		return nil, fmt.Errorf(`x448: cannot import nil *PrivateKey`)
 	}
+	// Verify pub matches the public key derived from the seed. A
+	// PrivateKey constructed via NewPrivateKey always satisfies this
+	// invariant; the check defends against hand-assembled values
+	// reaching this importer through unsafe / cgo / wrapper code.
+	// Mirrors the export-side check in exportX448Key — without it, an
+	// inconsistent JWK would be importable now and only fail on
+	// roundtrip much later, after thumbprint computation and other
+	// uses of x have already observed the wrong value.
+	var derivedPub x448.Key
+	x448.KeyGen(&derivedPub, &src.seed)
+	if !bytes.Equal(derivedPub[:], src.pub[:]) {
+		return nil, fmt.Errorf(`x448: PrivateKey.pub does not match KeyGen(seed); construct via NewPrivateKey to ensure consistency`)
+	}
 	key, err := jwkunsafe.NewKey(jwa.OKP())
 	if err != nil {
 		return nil, fmt.Errorf(`failed to create OKP private key: %w`, err)
