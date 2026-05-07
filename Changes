@@ -1,6 +1,16 @@
 Changes
 =======
 
+v4.0.2 7 May 2026
+  * `jwk.Import` of an `*x448.PrivateKey` now verifies that the
+    embedded public key matches the one derived from the seed,
+    mirroring the existing check on `jwk.Export`. Defends against
+    hand-assembled `*PrivateKey` values whose `pub` disagrees with
+    the seed (reachable only via unsafe / cgo / wrappers),
+    preventing such values from being imported into a JWK and
+    observed via thumbprint or downstream consumers before the
+    inconsistency would surface on the next export.
+
 v4.0.1 28 Apr 2026
   * `validateECDHESAlg` now accepts any registered `ContentEncryption`
     algorithm (was previously hardcoded to a fixed subset).
